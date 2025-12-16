@@ -23,6 +23,7 @@ from .config import (
     DEFAULT_THUMB_WIDTH,
     PHOTOS_DIR,
     TMP_DIR,
+    DB_PATH,
     ensure_dirs,
     get_thresholds,
     set_threshold,
@@ -241,8 +242,13 @@ async def update_settings(
 
 @app.post("/api/clear-cache")
 async def clear_cache() -> dict:
+    global db, processor, face_engine  # noqa: PLW0603
     # stop any running tasks is omitted; best-effort clear files/db
     try:
+        try:
+            db.close()
+        except Exception:
+            pass
         if DB_PATH.exists():
             DB_PATH.unlink()
         if PHOTOS_DIR.exists():
@@ -251,9 +257,7 @@ async def clear_cache() -> dict:
                     p.unlink()
     finally:
         # re-init DB to allow continued use without restart
-        db.close()
         ensure_dirs()
-        global db, processor, face_engine  # noqa: PLW0603
         db = Database()
         face_engine = FaceEngine()
         processor = PhotoProcessor(db=db, engine=face_engine)
