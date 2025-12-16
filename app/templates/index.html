@@ -157,6 +157,26 @@
         @media (max-width: 640px) {
             .upload-box { flex-direction: column; align-items: flex-start; }
         }
+        .lang-toggle {
+            display: inline-flex;
+            gap: 8px;
+            margin-top: 8px;
+            align-items: center;
+        }
+        .lang-btn {
+            padding: 6px 10px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: rgba(255,255,255,0.05);
+            color: var(--text);
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .lang-btn.active {
+            background: linear-gradient(120deg, var(--accent), #6366f1);
+            border-color: #5b7bff;
+            color: #fff;
+        }
         .modal {
             position: fixed;
             inset: 0;
@@ -177,23 +197,27 @@
 </head>
 <body>
     <header>
-        <h1>Face Photo Search</h1>
-        <p class="subtitle">选择照片文件夹 → 自动识别人脸 → 按人归类</p>
+        <h1 id="titleText">Face Photo Search</h1>
+        <p class="subtitle" id="subtitleText">选择照片文件夹 → 自动识别人脸 → 按人归类</p>
+        <div class="lang-toggle">
+            <button class="lang-btn active" data-lang="en" id="langEn">English</button>
+            <button class="lang-btn" data-lang="zh" id="langZh">中文</button>
+        </div>
     </header>
     <main>
         <section class="card">
             <div class="upload-box">
                 <div>
-                    <label class="btn" for="folderInput">
+                    <label class="btn" for="folderInput" id="chooseBtn">
                         📁 选择照片文件夹
                     </label>
                     <input id="folderInput" type="file" webkitdirectory directory multiple class="hidden" />
-                    <div class="hint">推荐使用 Chrome / Edge / Safari（Firefox 可能不支持文件夹选择）</div>
+                    <div class="hint" id="browserHint">推荐使用 Chrome / Edge / Safari（Firefox 可能不支持文件夹选择）</div>
                 </div>
                 <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                     <button class="btn" id="rebuildBtn" style="background:linear-gradient(120deg,#22c55e,#16a34a);">🔄 重新分析</button>
                     <button class="btn" id="clearBtn" style="background:linear-gradient(120deg,#f97316,#ea580c);">🗑️ 清空缓存</button>
-                    <div class="pill">当前引擎: {{ engine }}</div>
+                    <div class="pill" id="enginePill">当前引擎: {{ engine }}</div>
                 </div>
             </div>
             {% if error %}
@@ -205,15 +229,15 @@
             </div>
             <div class="hint" id="folderPath" style="margin-top:6px;">未选择文件夹</div>
             <div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-                <div class="hint">调整当前引擎的阈值（insightface 越大越严格；face_recognition 越小越严格）：</div>
+                <div class="hint" id="thresholdHint">调整当前引擎的阈值（insightface 越大越严格；face_recognition 越小越严格）：</div>
                 <input id="thresholdInput" type="range" min="0.3" max="1.2" step="0.01" value="0.6" style="width:180px;">
-                <div class="pill">当前阈值: <span id="thresholdValue">0.6</span></div>
+                <div class="pill" id="thresholdPill">当前阈值: <span id="thresholdValue">0.6</span></div>
                 <button class="btn" id="saveThreshold" style="background:linear-gradient(120deg,#6366f1,#8b5cf6);">💾 保存阈值</button>
             </div>
         </section>
 
         <section class="card">
-            <h2>智能合集</h2>
+            <h2 id="groupsTitle">智能合集</h2>
             <div id="emptyHint" class="hint">还没有数据，请先选择照片文件夹开始分析。</div>
             <div id="groupGrid" class="grid hidden"></div>
         </section>
@@ -248,17 +272,150 @@
         const thresholdValue = document.getElementById('thresholdValue');
         const folderPathEl = document.getElementById('folderPath');
         const clearBtn = document.getElementById('clearBtn');
+        const chooseBtn = document.getElementById('chooseBtn');
+        const browserHint = document.getElementById('browserHint');
+        const groupsTitle = document.getElementById('groupsTitle');
+        const titleText = document.getElementById('titleText');
+        const subtitleText = document.getElementById('subtitleText');
+        const thresholdHint = document.getElementById('thresholdHint');
+        const thresholdPill = document.getElementById('thresholdPill');
+        const saveThresholdBtn = document.getElementById('saveThreshold');
+        const enginePill = document.getElementById('enginePill');
+        const langEnBtn = document.getElementById('langEn');
+        const langZhBtn = document.getElementById('langZh');
 
         let pollTimer = null;
-        let currentEngine = '{{ engine }}';
+        const initialEngine = '{{ engine }}';
+        let currentEngine = initialEngine;
+        let currentLang = 'en';
+
+        const i18n = {
+            en: {
+                title: 'Face Photo Search',
+                subtitle: 'Choose a photo folder → detect faces → group people',
+                choose: 'Choose photo folder',
+                browserHint: 'Use Chrome / Edge / Safari (Firefox may not support folder picking)',
+                rebuild: 'Re-analyze',
+                clear: 'Clear cache',
+                engine: 'Engine',
+                waiting: 'Waiting for upload...',
+                folderNone: 'No folder selected',
+                folderSelected: 'Selected folder:',
+                thresholdHint: 'Adjust threshold (insightface higher = stricter; face_recognition lower = stricter):',
+                thresholdLabel: 'Threshold',
+                saveThreshold: 'Save threshold',
+                smartGroups: 'Smart groups',
+                emptyHint: 'No data yet. Choose a folder to start.',
+                detailTitle: 'Person detail',
+                back: '← Back to groups',
+                statusLabel: 'Status',
+                processingLabel: 'Processing',
+                facesFound: 'Faces',
+                noFace: 'No-face photos',
+                personsPrefix: 'Person',
+                photosUnit: 'photos',
+                parseFailed: 'Failed to parse response',
+                uploadFailed: 'Upload failed',
+                prepUpload: (n) => `Preparing to upload ${n} files...`,
+                submittedBatch: (u, t) => `Submitted ${u}/${t}, queued...`,
+                submittedAll: 'Submitted, analyzing...',
+                errorPrefix: 'Error: ',
+                rebuilding: 'Re-analyzing...',
+                rebuildStarted: 'Re-analyze started',
+                rebuildFailed: 'Re-analyze failed',
+                clearing: 'Clearing cache...',
+                cleared: 'Cache cleared, please upload again',
+                clearFailed: 'Clear failed',
+                thresholdSaved: 'Threshold saved, please re-analyze',
+                thresholdInvalid: 'Invalid threshold',
+                confirmClear: 'Clear cache (DB and copied photos)?',
+                stateRunning: 'running',
+                stateDone: 'done',
+                stateIdle: 'idle',
+                stateError: 'error'
+            },
+            zh: {
+                title: 'Face Photo Search',
+                subtitle: '选择照片文件夹 → 自动识别人脸 → 按人归类',
+                choose: '选择照片文件夹',
+                browserHint: '推荐使用 Chrome / Edge / Safari（Firefox 可能不支持文件夹选择）',
+                rebuild: '重新分析',
+                clear: '清空缓存',
+                engine: '当前引擎',
+                waiting: '等待上传...',
+                folderNone: '未选择文件夹',
+                folderSelected: '已选择文件夹：',
+                thresholdHint: '调整当前引擎的阈值（insightface 越大越严格；face_recognition 越小越严格）：',
+                thresholdLabel: '当前阈值',
+                saveThreshold: '保存阈值',
+                smartGroups: '智能合集',
+                emptyHint: '还没有数据，请先选择照片文件夹开始分析。',
+                detailTitle: '人物详情',
+                back: '← 返回合集',
+                statusLabel: '状态',
+                processingLabel: '正在处理',
+                facesFound: '已有人脸',
+                noFace: '无人脸',
+                personsPrefix: '人物',
+                photosUnit: '张',
+                parseFailed: '解析响应失败',
+                uploadFailed: '上传失败',
+                prepUpload: (n) => `准备上传 ${n} 个文件...`,
+                submittedBatch: (u, t) => `已提交 ${u}/${t}，正在排队处理...`,
+                submittedAll: '已提交，正在分析...',
+                errorPrefix: '错误: ',
+                rebuilding: '重新分析中...',
+                rebuildStarted: '已开始重新分析',
+                rebuildFailed: '重新分析失败',
+                clearing: '正在清理缓存...',
+                cleared: '缓存已清空，请重新上传',
+                clearFailed: '清理失败',
+                thresholdSaved: '阈值已更新，请重新分析',
+                thresholdInvalid: '阈值格式不正确',
+                confirmClear: '确定清空缓存（数据库和已复制的照片）吗？',
+                stateRunning: '运行中',
+                stateDone: '完成',
+                stateIdle: '空闲',
+                stateError: '错误'
+            }
+        };
+
+        function t(key) {
+            return i18n[currentLang][key] ?? key;
+        }
+
+        function applyLanguage() {
+            document.documentElement.lang = currentLang === 'zh' ? 'zh-CN' : 'en';
+            titleText.textContent = t('title');
+            subtitleText.textContent = t('subtitle');
+            chooseBtn.textContent = `📁 ${t('choose')}`;
+            browserHint.textContent = t('browserHint');
+            rebuildBtn.textContent = `🔄 ${t('rebuild')}`;
+            clearBtn.textContent = `🗑️ ${t('clear')}`;
+            enginePill.textContent = `${t('engine')}: ${currentEngine || ''}`;
+            statusText.textContent = t('waiting');
+            folderPathEl.textContent = t('folderNone');
+            thresholdHint.textContent = t('thresholdHint');
+            thresholdPill.firstChild.textContent = `${t('thresholdLabel')}: `;
+            saveThresholdBtn.textContent = `💾 ${t('saveThreshold')}`;
+            groupsTitle.textContent = t('smartGroups');
+            emptyHint.textContent = t('emptyHint');
+            detailTitle.textContent = t('detailTitle');
+            backBtn.textContent = t('back');
+            langEnBtn.classList.toggle('active', currentLang === 'en');
+            langZhBtn.classList.toggle('active', currentLang === 'zh');
+        }
+
+        langEnBtn.onclick = () => { currentLang = 'en'; applyLanguage(); loadGroups(); };
+        langZhBtn.onclick = () => { currentLang = 'zh'; applyLanguage(); loadGroups(); };
 
         input.addEventListener('change', async (e) => {
             if (!e.target.files.length) return;
             const files = Array.from(e.target.files);
             const folder = files[0].webkitRelativePath ? files[0].webkitRelativePath.split('/').slice(0, -1).join('/') : '(自定义选择)';
-            folderPathEl.textContent = `已选择文件夹：${folder || '(根目录)'}`;
+            folderPathEl.textContent = `${t('folderSelected')} ${folder || ''}`.trim();
             const batchSize = 40; // 控制单次请求体积，避免解析失败
-            setStatus(`准备上传 ${files.length} 个文件...`, 0, files.length);
+            setStatus(t('prepUpload')(files.length), 0, files.length);
             let uploaded = 0;
             try {
                 for (let i = 0; i < files.length; i += batchSize) {
@@ -273,17 +430,17 @@
                     try {
                         data = await res.json();
                     } catch (_) {
-                        const t = await res.text();
-                        throw new Error(t || '解析响应失败');
+                        const bodyText = await res.text();
+                        throw new Error(bodyText || t('parseFailed'));
                     }
-                    if (!res.ok) throw new Error(data.detail || data.message || '上传失败');
+                    if (!res.ok) throw new Error(data.detail || data.message || t('uploadFailed'));
                     uploaded += slice.length;
-                    setStatus(`已提交 ${uploaded}/${files.length}，正在排队处理...`, uploaded, files.length);
+                    setStatus(t('submittedBatch')(uploaded, files.length), uploaded, files.length);
                 }
-                setStatus('已提交，正在分析...', files.length, files.length);
+                setStatus(t('submittedAll'), files.length, files.length);
                 startPolling();
             } catch (err) {
-                setStatus('错误: ' + err.message, 0, 1, true);
+                setStatus(t('errorPrefix') + err.message, 0, 1, true);
             } finally {
                 input.value = '';
             }
@@ -305,19 +462,25 @@
                     progressBar.max = total;
                     progressBar.value = processed;
                 }
-                let line = `状态: ${state}`;
+                const stateLabel = {
+                    running: t('stateRunning'),
+                    done: t('stateDone'),
+                    idle: t('stateIdle'),
+                    error: t('stateError')
+                }[state] || state;
+                let line = `${t('statusLabel')}: ${stateLabel}`;
                 if (state === 'running') {
-                    line += ` · ${processed}/${total} · 正在处理: ${current || '...'}`
+                    line += ` · ${processed}/${total} · ${t('processingLabel')}: ${current || '...'}`;
                 }
-                line += ` · 已有人脸: ${faces_found || 0}`;
-                if (photos_no_face) line += ` · 无人脸: ${photos_no_face}`;
+                line += ` · ${t('facesFound')}: ${faces_found || 0}`;
+                if (photos_no_face) line += ` · ${t('noFace')}: ${photos_no_face}`;
                 setStatus(line, progressBar.value, progressBar.max);
 
                 if (state === 'done' || state === 'idle') {
                     await loadGroups();
                 }
                 if (state === 'error') {
-                    setStatus('错误: ' + (data.error || '未知错误'), 0, 1, true);
+                    setStatus(t('errorPrefix') + (data.error || ''), 0, 1, true);
                     stopPolling();
                 }
             } catch (e) {
@@ -348,13 +511,13 @@
             emptyHint.classList.add('hidden');
             groupGrid.classList.remove('hidden');
             groups.forEach((g, idx) => {
-                const label = `人物 ${idx + 1}`;
+                const label = `${t('personsPrefix')} ${idx + 1}`;
                 const card = document.createElement('div');
                 card.className = 'person-card';
                 card.innerHTML = `
                     <img class="avatar" src="/api/face-cover/${g.group_id}?w=256" alt="cover">
                     <div class="card-title">${label}</div>
-                    <div class="card-sub">${g.photo_count || g.count || 0} 张</div>
+                    <div class="card-sub">${g.photo_count || g.count || 0} ${t('photosUnit')}</div>
                 `;
                 card.onclick = () => loadGroupDetail(g.group_id, label);
                 groupGrid.appendChild(card);
@@ -374,7 +537,7 @@
                 img.onclick = () => showModal(`/api/photo/${pid}`);
                 detailGrid.appendChild(img);
             });
-            detailTitle.textContent = `${label || '人物'} · ${photos.length} 张`;
+            detailTitle.textContent = `${label || t('personsPrefix')} · ${photos.length} ${t('photosUnit')}`;
             detailSection.classList.remove('hidden');
             detailSection.scrollIntoView({behavior: 'smooth'});
         }
@@ -395,16 +558,16 @@
         };
 
         rebuildBtn.onclick = async () => {
-            setStatus('重新分析中...', 0, 1);
+            setStatus(t('rebuilding'), 0, 1);
             rebuildBtn.disabled = true;
             try {
                 const res = await fetch('/api/rebuild', { method: 'POST' });
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.detail || data.message || '重新分析失败');
-                setStatus(data.message || '已开始重新分析', 0, 1);
+                if (!res.ok) throw new Error(data.detail || data.message || t('rebuildFailed'));
+                setStatus(data.message || t('rebuildStarted'), 0, 1);
                 startPolling();
             } catch (err) {
-                setStatus('错误: ' + err.message, 0, 1, true);
+                setStatus(t('errorPrefix') + err.message, 0, 1, true);
             } finally {
                 rebuildBtn.disabled = false;
             }
@@ -431,7 +594,7 @@
 
         async function saveThreshold() {
             const val = parseFloat(thresholdInput.value);
-            if (Number.isNaN(val)) throw new Error('阈值格式不正确');
+            if (Number.isNaN(val)) throw new Error(t('thresholdInvalid'));
             const payload = new URLSearchParams({ engine: currentEngine, value: String(val) });
             const res = await fetch('/api/settings', {
                 method: 'POST',
@@ -445,34 +608,35 @@
                 if (Array.isArray(msg)) {
                     msg = msg.map(d => d?.msg || JSON.stringify(d)).join('; ');
                 }
-                throw new Error(msg || '设置失败');
+                throw new Error(msg || t('errorPrefix'));
             }
-            setStatus('阈值已更新，请重新分析', 0, 1);
+            setStatus(t('thresholdSaved'), 0, 1);
         }
 
         document.getElementById('saveThreshold').onclick = async () => {
             try {
                 await saveThreshold();
             } catch (err) {
-                setStatus('错误: ' + err.message, 0, 1, true);
+                setStatus(t('errorPrefix') + err.message, 0, 1, true);
             }
         };
 
         clearBtn.onclick = async () => {
-            if (!confirm('确定清空缓存（数据库和已复制的照片）吗？')) return;
-            setStatus('正在清理缓存...', 0, 1);
+            if (!confirm(t('confirmClear'))) return;
+            setStatus(t('clearing'), 0, 1);
             try {
                 const res = await fetch('/api/clear-cache', { method: 'POST' });
                 const data = await res.json();
-                if (!res.ok) throw new Error(data.detail || data.message || '清理失败');
-                setStatus(data.message || '缓存已清空，请重新上传', 0, 1);
+                if (!res.ok) throw new Error(data.detail || data.message || t('clearFailed'));
+                setStatus(data.message || t('cleared'), 0, 1);
                 await loadGroups();
             } catch (err) {
-                setStatus('错误: ' + err.message, 0, 1, true);
+                setStatus(t('errorPrefix') + err.message, 0, 1, true);
             }
         };
 
         // initial load
+        applyLanguage();
         loadGroups();
         loadSettings();
         // ensure modal stays hidden on first paint
