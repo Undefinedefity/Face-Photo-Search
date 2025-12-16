@@ -13,8 +13,7 @@ venv/
 .vscode/
 
 # Data and caches
-data/tmp/
-data/*.db
+data/
 .DS_Store
 
 # Logs
