@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>智能人脸合集</title>
+    <title>Face Photo Search</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Crect width='120' height='120' rx='28' fill='%230f172a'/%3E%3Ccircle cx='44' cy='52' r='12' fill='%23a5b4fc'/%3E%3Ccircle cx='76' cy='52' r='12' fill='%2338bdf8'/%3E%3Cpath d='M38 80c8 6 36 6 44 0' stroke='%236366f1' stroke-width='8' stroke-linecap='round' fill='none'/%3E%3C/svg%3E">
     <style>
@@ -177,7 +177,7 @@
 </head>
 <body>
     <header>
-        <h1>智能人脸合集</h1>
+        <h1>Face Photo Search</h1>
         <p class="subtitle">选择照片文件夹 → 自动识别人脸 → 按人归类</p>
     </header>
     <main>
@@ -246,7 +246,14 @@
                     method: 'POST',
                     body: formData
                 });
-                const data = await res.json();
+                let data = null;
+                try {
+                    data = await res.json();
+                } catch (_) {
+                    // fall back to text if not JSON
+                    const t = await res.text();
+                    throw new Error(t || '解析响应失败');
+                }
                 if (!res.ok) throw new Error(data.detail || data.message || '上传失败');
                 setStatus('已提交，正在分析...', 0, 1);
                 startPolling();

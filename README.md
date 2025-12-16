@@ -12,16 +12,20 @@
 
 ```bash
 conda create -n face-photo-search python=3.10 -y
+# 若提示 “Run 'conda init' before 'conda activate'”，先运行：conda init zsh  （或 bash/powershell）并重开终端
 conda activate face-photo-search
 ```
 
 安装依赖：
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt   # 已固定 numpy<2 以避免旧编译包崩溃
 # 选择一个人脸引擎（推荐先试 insightface，失败就换 face_recognition）
-pip install insightface  # 若失败请看下方故障排查
-# 或
+# Intel/macOS/Windows/Linux:
+pip install insightface onnxruntime
+# Apple Silicon 请用：
+# pip install insightface onnxruntime-silicon
+# 如果 insightface 不行，再用：
 pip install face_recognition
 ```
 
