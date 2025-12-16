@@ -1,113 +1,149 @@
-# Face Photo Search (本地人脸归类相册)
+# Face Photo Search
 
-一个完全本地运行的 Web 应用：选择本地照片文件夹 → 自动识别人脸 → 把同一个人归类 → 点击查看该人的所有照片。支持 macOS / Windows / Linux。
+English · [中文说明](#中文说明)
 
-- 后端：Python + FastAPI，SQLite 缓存结果
-- 前端：纯 HTML + 少量 JS，随 FastAPI 一起提供
-- 全程离线：不上传、不联网、不调用云 API
+A local-only web app: pick a photo folder, detect faces on-device, cluster the same person, and browse each person’s photos with face thumbnails and full-size previews. Works on macOS / Windows / Linux.
 
-## 快速开始
+- Backend: FastAPI + SQLite caching
+- Frontend: static HTML + minimal JS served by FastAPI
+- Offline: no uploads, no cloud calls
 
-1) 准备环境（建议 Python 3.9+，示例使用 conda）
+## Quick Start (English)
 
+1) Environment (Python 3.9+, example with conda)
 ```bash
 conda create -n face-photo-search python=3.10 -y
-# 若提示 “Run 'conda init' before 'conda activate'”，先运行：conda init zsh  （或 bash/powershell）并重开终端
+# If you see “Run 'conda init' before 'conda activate'”, run: conda init zsh (or bash/powershell) then open a new terminal
 conda activate face-photo-search
 ```
 
-安装依赖：
-
+2) Install deps (numpy pinned <2 to avoid old binary crashes)
 ```bash
-pip install -r requirements.txt   # 已固定 numpy<2 以避免旧编译包崩溃
-# 选择一个人脸引擎（推荐先试 insightface，失败就换 face_recognition）
+pip install -r requirements.txt
+# Choose a face engine (try insightface first, fallback to face_recognition)
 # Intel/macOS/Windows/Linux:
 pip install insightface onnxruntime
-# Apple Silicon 请用：
+# Apple Silicon:
 # pip install insightface onnxruntime-silicon
-# 如果 insightface 不行，再用：
+# If insightface fails:
 pip install face_recognition
 ```
 
-2) 启动
-
-- macOS / Linux：
+3) Run
+- macOS / Linux
   ```bash
-  chmod +x run.sh  # 如首次运行需要权限
+  chmod +x run.sh   # first time
   ./run.sh
   ```
-- Windows：
+- Windows
   ```bat
   run.bat
   ```
-- 或通用方式：
+- Or
   ```bash
   python -m app.main
   ```
+Browser opens at <http://localhost:8000>.
 
-启动后会自动打开浏览器：<http://localhost:8000>。
+4) Use the web UI
+- Click “Choose photo folder” (Chrome/Edge/Safari; Firefox may not support folder input).
+- Analysis starts immediately; progress bar shows status. Large folders are auto-batched (~40 files/request).
+- “Smart groups” cards: each card = one person; click to view that person’s photos; click a thumbnail to see full image.
+- Adjust clustering threshold with the slider → “Save threshold” → “Re-analyze” to re-cluster (settings saved to `data/config.json`).
+- “Clear cache” button removes `data/app.db` and copied photos; re-upload to start fresh.
 
-3) 在网页上操作
+## Data & Cache
+- Photos copied to `data/photos/` (content-hash filenames).
+- Results stored in `data/app.db` (SQLite); reused on next launch.
+- Re-uploading the same folder processes new/changed files incrementally.
+- Clear cache via the UI button or delete `data/app.db` and `data/photos/*`.
 
-- 首页大按钮“选择照片文件夹”，选择你的相册文件夹（推荐 Chrome / Edge / Safari，Firefox 不支持文件夹选择）。
-- 选择后自动开始分析，页面显示进度条和当前处理的照片。大文件夹会自动分批上传（约 40 张/批），如仍有问题请先用更小批次测试。
-- 页面提供“保存阈值”+“重新分析”按钮，可在线调节分组阈值并重跑聚类。
-- 完成后看到“智能合集”卡片，每张卡代表一个人；点击卡片进入该人的详情页，网格展示所有包含 TA 的照片，点击缩略图可放大预览原图。
+## Clustering & Thresholds
+- InsightFace (cosine): higher threshold = stricter (more splitting).
+- face_recognition (euclidean): lower threshold = stricter.
+- Adjust in UI (slider + save, then re-analyze) or via env vars:
+  - `INSIGHTFACE_THRESHOLD` (default 0.6)
+  - `FACEREC_THRESHOLD` (default 0.6)
 
-## 数据与缓存
+## API (minimal)
+- `POST /api/upload-folder` : multipart multi-file upload (folder picker)
+- `GET /api/status` : task state/progress
+- `GET /api/groups` : face groups
+- `GET /api/groups/{group_id}` : photo_ids in a group
+- `GET /api/photo/{photo_id}?w=256` : photo or thumbnail
+- `GET /api/face-cover/{group_id}?w=256` : face crop cover
+- `POST /api/rebuild` : re-analyze all existing photos
+- `POST /api/clear-cache` : clear DB and copied photos
+- `GET/POST /api/settings` : get/set thresholds
 
-- 照片会复制到本地 `data/photos/` 下（按文件内容哈希命名，避免重名）。
-- 分析结果写入 `data/app.db`（SQLite），下次启动无需重算。
-- 若原始照片改动，再次选择同一文件夹会增量处理新增/修改的文件。
+## Troubleshooting
+- Folder picker: use Chrome/Edge/Safari (Firefox lacks `webkitdirectory`).
+- Install issues:
+  - insightface
+    - macOS: `brew install cmake` then `pip install insightface`
+    - Ubuntu/Debian: `sudo apt-get install -y build-essential cmake libgl1` then `pip install insightface`
+    - Windows: install “Visual Studio Build Tools (C++)”, then `pip install insightface`
+  - face_recognition
+    - macOS: `brew install cmake dlib` then `pip install face_recognition`
+    - Ubuntu/Debian: `sudo apt-get install -y build-essential cmake libgl1 libopenblas-dev` then `pip install face_recognition`
+    - Windows: install CMake + VS Build Tools, then `pip install face_recognition`
+- One big cluster/poor separation: make threshold stricter (insightface → larger; face_recognition → smaller) then “Re-analyze”.
 
-## 聚类与阈值
+## License
+MIT, see `LICENSE`.
 
-- 默认使用简单聚类，将同一人的 embedding 合并到同一组。
-- 阈值含义：
-  - InsightFace：用余弦相似度，阈值越大越严格（更容易拆成多个不同人）。
-  - face_recognition：用欧氏距离，阈值越小越严格（更容易拆分）。
-- 调节方式：
-  - 网页首页有滑条和“保存阈值”+“重新分析”按钮，针对当前引擎保存到 `data/config.json`，重启后保留。
-  - 或用环境变量启动时覆盖：`INSIGHTFACE_THRESHOLD`（默认 0.6）、`FACEREC_THRESHOLD`（默认 0.6）。
-  - 修改阈值后需要点击“重新分析”或调用 `POST /api/rebuild` 让结果刷新。
+---
 
-## API（最小可用集）
+## 中文说明
 
-- `POST /api/upload-folder`：multipart 上传多文件（浏览器文件夹选择自动完成）
-- `GET /api/status`：查看任务状态与进度
-- `GET /api/groups`：人脸分组列表
-- `GET /api/groups/{group_id}`：指定分组的所有 `photo_id`
-- `GET /api/photo/{photo_id}?w=256`：原图或缩略图
-- `POST /api/rebuild`：重新分析现有所有照片（可选）
+一个完全本地运行的 Web 应用：选择本地照片文件夹 → 自动识别人脸 → 把同一个人归类 → 点击查看该人的所有照片。支持 macOS / Windows / Linux。
 
-## 常见问题
+- 后端：FastAPI + SQLite 缓存
+- 前端：静态 HTML/JS
+- 全程离线：不上传、不联网
 
-### 浏览器支持
-- 文件夹选择需要 Chrome / Edge / Safari。Firefox 暂不支持 `<input type="file" webkitdirectory>`。
+### 快速开始
+```bash
+conda create -n face-photo-search python=3.10 -y
+# 若提示 “Run 'conda init' before 'conda activate'”，先执行 conda init zsh（或 bash/powershell）后重开终端
+conda activate face-photo-search
+pip install -r requirements.txt   # 已固定 numpy<2
+# Intel/macOS/Windows/Linux:
+pip install insightface onnxruntime
+# Apple Silicon:
+# pip install insightface onnxruntime-silicon
+# 如果 insightface 不行，再用：
+pip install face_recognition
+chmod +x run.sh && ./run.sh   # macOS/Linux
+# 或 run.bat / python -m app.main
+```
+浏览器打开 <http://localhost:8000>。
 
-### 人脸库安装失败怎么办？
+### 使用
+- 点击“选择照片文件夹”上传（推荐 Chrome/Edge/Safari）。
+- 自动开始分析，进度条可见；大文件夹自动分批（约 40 张/批）。
+- “智能合集”卡片代表一个人；点卡片看该人的所有照片；点缩略图放大。
+- 阈值滑条 + “保存阈值” + “重新分析”可调整分组严格度（写入 `data/config.json`）。
+- “清空缓存”可删除 `data/app.db` 与已复制照片，重新上传即可。
 
-1. 优先试 `insightface`
-   - macOS（Homebrew）：`brew install cmake` 然后 `pip install insightface`
-   - Ubuntu/Debian：`sudo apt-get install -y build-essential cmake libgl1` 然后 `pip install insightface`
-   - Windows：安装 “Visual Studio Build Tools (C++)”，再 `pip install insightface`
+### 数据与缓存
+- 照片复制到 `data/photos/`（内容哈希命名），结果在 `data/app.db`。
+- 重复选择同一文件夹可增量处理新增/修改文件。
+- 清空缓存：用按钮或手动删 `data/app.db` 与 `data/photos/*`。
 
-2. 如果 insightface 失败，再试 `face_recognition`
-   - macOS：`brew install cmake dlib` 然后 `pip install face_recognition`
-   - Ubuntu/Debian：`sudo apt-get install -y build-essential cmake libgl1 libopenblas-dev` 然后 `pip install face_recognition`
-   - Windows：安装 CMake + Visual Studio Build Tools（C++），再 `pip install face_recognition`
+### 聚类与阈值
+- InsightFace：阈值越大越严格；face_recognition：阈值越小越严格。
+- 调节：UI 滑条（保存后写入 `data/config.json`），再点“重新分析”；或启动前用环境变量 `INSIGHTFACE_THRESHOLD` / `FACEREC_THRESHOLD`。
 
-3. 两个都装不了时，应用会在页面显示明确错误，请按提示安装。
+### API
+- `POST /api/upload-folder`、`GET /api/status`、`GET /api/groups`、`GET /api/groups/{group_id}`、
+  `GET /api/photo/{photo_id}?w=256`、`GET /api/face-cover/{group_id}?w=256`、
+  `POST /api/rebuild`、`POST /api/clear-cache`、`GET/POST /api/settings`
 
-### 照片太多很慢？
-- 先用少量照片试运行，确认可用后再分批导入。
-- 关闭其他高占用程序，确保有可用的 CPU/GPU。
-- 调整阈值：严格阈值可能增加分组数量但不会明显提速。
+### 常见问题
+- 浏览器：Chrome/Edge/Safari 支持文件夹选择。
+- 安装失败：按上方 insightface/face_recognition 指南安装。
+- 分组不准：调严格阈值后点“重新分析”。
 
-### 重新分析 / 清理
-- 点击页面上的“重新分析”按钮（如果你加了自定义 UI）或调用 `POST /api/rebuild`。
-- 删除 `data/app.db` 可重置缓存（已有分组会丢失）。
-
-## 许可证
-
-MIT License，详见 `LICENSE`。
+### 许可证
+MIT（见 `LICENSE`）。
