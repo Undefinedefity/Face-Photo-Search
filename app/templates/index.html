@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>智能人脸合集</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #111827;
+            --accent: #38bdf8;
+            --text: #e5e7eb;
+            --muted: #94a3b8;
+            --border: #1f2937;
+            --green: #22c55e;
+        }
+        body {
+            margin: 0;
+            background: radial-gradient(circle at 20% 20%, rgba(56,189,248,0.08), transparent 35%),
+                        radial-gradient(circle at 80% 0%, rgba(34,197,94,0.08), transparent 30%),
+                        var(--bg);
+            color: var(--text);
+            font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
+            min-height: 100vh;
+        }
+        header {
+            padding: 24px;
+            text-align: center;
+        }
+        h1 {
+            margin: 0 0 10px 0;
+            font-size: 28px;
+        }
+        p.subtitle {
+            margin: 0;
+            color: var(--muted);
+        }
+        main {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 20px 60px;
+        }
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.25);
+        }
+        .upload-box {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 18px;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            background: linear-gradient(120deg, var(--accent), #6366f1);
+            color: white;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .hint {
+            color: var(--muted);
+            font-size: 14px;
+        }
+        .progress {
+            margin-top: 12px;
+        }
+        progress {
+            width: 100%;
+            height: 12px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: var(--border);
+        }
+        progress::-webkit-progress-bar { background: var(--border); }
+        progress::-webkit-progress-value { background: var(--accent); }
+        .status-line { margin-top: 8px; color: var(--muted); font-size: 14px; }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 16px;
+        }
+        .person-card {
+            border-radius: 14px;
+            background: linear-gradient(160deg, rgba(56,189,248,0.08), rgba(99,102,241,0.05));
+            border: 1px solid var(--border);
+            padding: 12px;
+            cursor: pointer;
+            transition: transform 0.15s ease, border-color 0.2s ease;
+        }
+        .person-card:hover { transform: translateY(-4px); border-color: var(--accent); }
+        .avatar {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            border-radius: 12px;
+            object-fit: cover;
+            background: #0b1220;
+        }
+        .card-title {
+            margin: 8px 0 0;
+            font-weight: 600;
+            color: #fff;
+        }
+        .card-sub {
+            color: var(--muted);
+            margin: 2px 0 0;
+            font-size: 14px;
+        }
+        .thumb-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 12px;
+        }
+        .thumb {
+            width: 100%;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.1s ease;
+        }
+        .thumb:hover { transform: scale(1.02); }
+        .hidden { display: none; }
+        .error {
+            border: 1px solid #f43f5e;
+            background: rgba(244,63,94,0.1);
+            color: #fecdd3;
+            padding: 12px;
+            border-radius: 10px;
+            margin-top: 10px;
+            white-space: pre-wrap;
+        }
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(34,197,94,0.12);
+            color: var(--green);
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 13px;
+        }
+        @media (max-width: 640px) {
+            .upload-box { flex-direction: column; align-items: flex-start; }
+        }
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.75);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            z-index: 20;
+        }
+        .modal img {
+            max-width: 90vw;
+            max-height: 90vh;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.45);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>智能人脸合集</h1>
+        <p class="subtitle">选择照片文件夹 → 自动识别人脸 → 按人归类</p>
+    </header>
+    <main>
+        <section class="card">
+            <div class="upload-box">
+                <div>
+                    <label class="btn" for="folderInput">
+                        📁 选择照片文件夹
+                    </label>
+                    <input id="folderInput" type="file" webkitdirectory directory multiple class="hidden" />
+                    <div class="hint">推荐使用 Chrome / Edge / Safari（Firefox 可能不支持文件夹选择）</div>
+                </div>
+                <div class="pill">当前引擎: {{ engine }}</div>
+            </div>
+            {% if error %}
+            <div class="error">{{ error }}</div>
+            {% endif %}
+            <div class="progress">
+                <progress id="progressBar" value="0" max="1"></progress>
+                <div class="status-line" id="statusText">等待上传...</div>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>智能合集</h2>
+            <div id="emptyHint" class="hint">还没有数据，请先选择照片文件夹开始分析。</div>
+            <div id="groupGrid" class="grid hidden"></div>
+        </section>
+
+        <section id="detailSection" class="card hidden">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+                <h2 id="detailTitle">人物详情</h2>
+                <button class="btn" id="backBtn">← 返回合集</button>
+            </div>
+            <div id="detailGrid" class="thumb-grid"></div>
+        </section>
+    </main>
+
+    <div id="modal" class="modal hidden">
+        <img id="modalImg" src="" alt="预览">
+    </div>
+
+    <script>
+        const input = document.getElementById('folderInput');
+        const progressBar = document.getElementById('progressBar');
+        const statusText = document.getElementById('statusText');
+        const groupGrid = document.getElementById('groupGrid');
+        const emptyHint = document.getElementById('emptyHint');
+        const detailSection = document.getElementById('detailSection');
+        const detailGrid = document.getElementById('detailGrid');
+        const detailTitle = document.getElementById('detailTitle');
+        const backBtn = document.getElementById('backBtn');
+        const modal = document.getElementById('modal');
+        const modalImg = document.getElementById('modalImg');
+
+        let pollTimer = null;
+
+        input.addEventListener('change', async (e) => {
+            if (!e.target.files.length) return;
+            const files = Array.from(e.target.files);
+            const formData = new FormData();
+            files.forEach(f => formData.append('files', f, f.webkitRelativePath || f.name));
+            setStatus('正在上传并开始分析...', 0, 1);
+            try {
+                const res = await fetch('/api/upload-folder', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || data.message || '上传失败');
+                setStatus('已提交，正在分析...', 0, 1);
+                startPolling();
+            } catch (err) {
+                setStatus('错误: ' + err.message, 0, 1, true);
+            } finally {
+                input.value = '';
+            }
+        });
+
+        function setStatus(text, value, max, isError=false) {
+            statusText.textContent = text;
+            statusText.style.color = isError ? '#fecdd3' : 'var(--muted)';
+            progressBar.value = value;
+            progressBar.max = Math.max(max, 1);
+        }
+
+        async function pollStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                const { state, total, processed, current, faces_found, photos_no_face } = data;
+                if (total > 0) {
+                    progressBar.max = total;
+                    progressBar.value = processed;
+                }
+                let line = `状态: ${state}`;
+                if (state === 'running') {
+                    line += ` · ${processed}/${total} · 正在处理: ${current || '...'}`
+                }
+                line += ` · 已有人脸: ${faces_found || 0}`;
+                if (photos_no_face) line += ` · 无人脸: ${photos_no_face}`;
+                setStatus(line, progressBar.value, progressBar.max);
+
+                if (state === 'done' || state === 'idle') {
+                    await loadGroups();
+                }
+                if (state === 'error') {
+                    setStatus('错误: ' + (data.error || '未知错误'), 0, 1, true);
+                    stopPolling();
+                }
+            } catch (e) {
+                console.warn(e);
+            }
+        }
+
+        function startPolling() {
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = setInterval(pollStatus, 1000);
+            pollStatus();
+        }
+        function stopPolling() {
+            if (pollTimer) clearInterval(pollTimer);
+            pollTimer = null;
+        }
+
+        async function loadGroups() {
+            const res = await fetch('/api/groups');
+            const data = await res.json();
+            const groups = data.groups || [];
+            groupGrid.innerHTML = '';
+            if (!groups.length) {
+                emptyHint.classList.remove('hidden');
+                groupGrid.classList.add('hidden');
+                return;
+            }
+            emptyHint.classList.add('hidden');
+            groupGrid.classList.remove('hidden');
+            groups.forEach(g => {
+                const card = document.createElement('div');
+                card.className = 'person-card';
+                card.innerHTML = `
+                    <img class="avatar" src="/api/photo/${g.cover_photo_id}?w=256" alt="cover">
+                    <div class="card-title">人物 ${g.group_id.slice(0, 6)}</div>
+                    <div class="card-sub">${g.count} 张</div>
+                `;
+                card.onclick = () => loadGroupDetail(g.group_id);
+                groupGrid.appendChild(card);
+            });
+        }
+
+        async function loadGroupDetail(groupId) {
+            const res = await fetch(`/api/groups/${groupId}`);
+            if (!res.ok) return;
+            const data = await res.json();
+            const photos = data.photos || [];
+            detailGrid.innerHTML = '';
+            photos.forEach(pid => {
+                const img = document.createElement('img');
+                img.className = 'thumb';
+                img.src = `/api/photo/${pid}?w=256`;
+                img.onclick = () => showModal(`/api/photo/${pid}`);
+                detailGrid.appendChild(img);
+            });
+            detailTitle.textContent = `人物 ${groupId.slice(0,6)} · ${photos.length} 张`;
+            detailSection.classList.remove('hidden');
+            detailSection.scrollIntoView({behavior: 'smooth'});
+        }
+
+        backBtn.onclick = () => {
+            detailSection.classList.add('hidden');
+        };
+
+        function showModal(src) {
+            modalImg.src = src;
+            modal.classList.remove('hidden');
+        }
+        modal.onclick = () => {
+            modal.classList.add('hidden');
+            modalImg.src = '';
+        };
+
+        // initial load
+        loadGroups();
+    </script>
+</body>
+</html>

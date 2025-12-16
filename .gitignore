@@ -1,0 +1,21 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+.venv/
+env/
+venv/
+
+# IDE
+.idea/
+.vscode/
+
+# Data and caches
+data/tmp/
+data/*.db
+.DS_Store
+
+# Logs
+*.log
