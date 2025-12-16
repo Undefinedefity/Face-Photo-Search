@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import hashlib
 import io
 import shutil
@@ -12,7 +13,7 @@ from typing import List, Optional
 
 import uvicorn
 import traceback
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -23,6 +24,8 @@ from .config import (
     PHOTOS_DIR,
     TMP_DIR,
     ensure_dirs,
+    get_thresholds,
+    set_threshold,
 )
 from .database import Database
 from .face_engine import FaceEngine
@@ -128,8 +131,14 @@ async def groups() -> dict:
     items = db.list_groups_with_cover()
     return {
         "groups": [
-            {"group_id": gid, "count": count, "cover_photo_id": pid, "cover_bbox": bbox}
-            for gid, count, pid, bbox in items
+            {
+                "group_id": gid,
+                "photo_count": photo_cnt,
+                "face_count": face_cnt,
+                "cover_photo_id": pid,
+                "cover_bbox": bbox,
+            }
+            for gid, photo_cnt, face_cnt, pid, bbox in items
         ]
     }
 
@@ -169,18 +178,24 @@ async def photo(photo_id: str, w: Optional[int] = None):
 
 
 def _read_face_crop(photo_path: Path, bbox_json: str, width: Optional[int]) -> bytes:
-    bbox = json.loads(bbox_json)
+    try:
+        bbox = json.loads(bbox_json) if bbox_json else None
+    except Exception:
+        bbox = None
     with Image.open(photo_path) as im:
-        x1, y1, x2, y2 = bbox
-        # expand a bit to include more context
-        dx = int((x2 - x1) * 0.2)
-        dy = int((y2 - y1) * 0.2)
-        left = max(0, x1 - dx)
-        top = max(0, y1 - dy)
-        right = min(im.width, x2 + dx)
-        bottom = min(im.height, y2 + dy)
-        face = im.crop((left, top, right, bottom))
-        if width and width > 0:
+        if bbox and len(bbox) == 4:
+            x1, y1, x2, y2 = bbox
+            # expand a bit to include more context
+            dx = int((x2 - x1) * 0.2)
+            dy = int((y2 - y1) * 0.2)
+            left = max(0, x1 - dx)
+            top = max(0, y1 - dy)
+            right = min(im.width, x2 + dx)
+            bottom = min(im.height, y2 + dy)
+            face = im.crop((left, top, right, bottom))
+        else:
+            face = im
+        if width and width > 0 and face.width > width:
             ratio = width / float(face.width)
             height = int(face.height * ratio)
             face = face.resize((width, height))
@@ -196,12 +211,53 @@ async def face_cover(group_id: str, w: Optional[int] = None):
     record = next((r for r in items if r[0] == group_id), None)
     if not record:
         raise HTTPException(status_code=404, detail="Group not found")
-    _, _, photo_id, bbox = record
+    # record: (group_id, photo_count, face_count, photo_id, bbox_json)
+    _, _, _, photo_id, bbox = record
     path_str = db.get_photo_path(photo_id)
     if not path_str:
         raise HTTPException(status_code=404, detail="Photo not found")
     data = await asyncio.to_thread(_read_face_crop, Path(path_str), bbox, int(w) if w else None)
     return StreamingResponse(io.BytesIO(data), media_type="image/jpeg")
+
+
+@app.get("/api/settings")
+async def get_settings() -> dict:
+    insight, facerec = get_thresholds()
+    return {"insightface_threshold": insight, "facerec_threshold": facerec}
+
+
+@app.post("/api/settings")
+async def update_settings(
+    engine: str = Form(...),
+    value: float = Form(...),
+) -> dict:
+    if engine not in {"insightface", "face_recognition"}:
+        raise HTTPException(status_code=400, detail="Unsupported engine")
+    if value <= 0 or value >= 2:
+        raise HTTPException(status_code=400, detail="Invalid threshold")
+    set_threshold(engine, value)
+    return {"message": "Threshold updated", "engine": engine, "value": value}
+
+
+@app.post("/api/clear-cache")
+async def clear_cache() -> dict:
+    # stop any running tasks is omitted; best-effort clear files/db
+    try:
+        if DB_PATH.exists():
+            DB_PATH.unlink()
+        if PHOTOS_DIR.exists():
+            for p in PHOTOS_DIR.glob("*"):
+                if p.is_file():
+                    p.unlink()
+    finally:
+        # re-init DB to allow continued use without restart
+        db.close()
+        ensure_dirs()
+        global db, processor, face_engine  # noqa: PLW0603
+        db = Database()
+        face_engine = FaceEngine()
+        processor = PhotoProcessor(db=db, engine=face_engine)
+    return {"message": "Cache cleared. Please re-upload or re-analyze."}
 
 
 @app.post("/api/rebuild")

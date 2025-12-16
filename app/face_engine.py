@@ -7,7 +7,7 @@ from typing import List, Tuple
 import numpy as np
 from PIL import Image
 
-from .config import FACEREC_EUCLIDEAN_THRESHOLD, INSIGHTFACE_COSINE_THRESHOLD
+from .config import get_thresholds
 
 
 @dataclass
@@ -124,11 +124,12 @@ class FaceEngine:
         for fid, emb, model in faces:
             by_model.setdefault(model, []).append((fid, emb))
 
+        insightface_threshold, facerec_threshold = get_thresholds()
         for model, items in by_model.items():
             if model == "face_recognition":
-                assignments.extend(self._cluster_euclidean(items, FACEREC_EUCLIDEAN_THRESHOLD))
+                assignments.extend(self._cluster_euclidean(items, facerec_threshold))
             else:
-                assignments.extend(self._cluster_cosine(items, INSIGHTFACE_COSINE_THRESHOLD))
+                assignments.extend(self._cluster_cosine(items, insightface_threshold))
         return assignments
 
     @staticmethod
@@ -201,4 +202,3 @@ class FaceEngine:
             Windows: install CMake and Visual Studio Build Tools, then pip install face_recognition
             """
         ).strip()
-

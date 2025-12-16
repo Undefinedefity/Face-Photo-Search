@@ -51,6 +51,7 @@ pip install face_recognition
 
 - 首页大按钮“选择照片文件夹”，选择你的相册文件夹（推荐 Chrome / Edge / Safari，Firefox 不支持文件夹选择）。
 - 选择后自动开始分析，页面显示进度条和当前处理的照片。大文件夹会自动分批上传（约 40 张/批），如仍有问题请先用更小批次测试。
+- 页面提供“保存阈值”+“重新分析”按钮，可在线调节分组阈值并重跑聚类。
 - 完成后看到“智能合集”卡片，每张卡代表一个人；点击卡片进入该人的详情页，网格展示所有包含 TA 的照片，点击缩略图可放大预览原图。
 
 ## 数据与缓存
@@ -62,9 +63,13 @@ pip install face_recognition
 ## 聚类与阈值
 
 - 默认使用简单聚类，将同一人的 embedding 合并到同一组。
-- 阈值可通过环境变量调整：
-  - InsightFace（余弦相似度）：`INSIGHTFACE_THRESHOLD`，默认 `0.5`（越大越严格）
-  - face_recognition（欧氏距离）：`FACEREC_THRESHOLD`，默认 `0.6`（越小越严格）
+- 阈值含义：
+  - InsightFace：用余弦相似度，阈值越大越严格（更容易拆成多个不同人）。
+  - face_recognition：用欧氏距离，阈值越小越严格（更容易拆分）。
+- 调节方式：
+  - 网页首页有滑条和“保存阈值”+“重新分析”按钮，针对当前引擎保存到 `data/config.json`，重启后保留。
+  - 或用环境变量启动时覆盖：`INSIGHTFACE_THRESHOLD`（默认 0.6）、`FACEREC_THRESHOLD`（默认 0.6）。
+  - 修改阈值后需要点击“重新分析”或调用 `POST /api/rebuild` 让结果刷新。
 
 ## API（最小可用集）
 

@@ -190,7 +190,11 @@
                     <input id="folderInput" type="file" webkitdirectory directory multiple class="hidden" />
                     <div class="hint">推荐使用 Chrome / Edge / Safari（Firefox 可能不支持文件夹选择）</div>
                 </div>
-                <div class="pill">当前引擎: {{ engine }}</div>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <button class="btn" id="rebuildBtn" style="background:linear-gradient(120deg,#22c55e,#16a34a);">🔄 重新分析</button>
+                    <button class="btn" id="clearBtn" style="background:linear-gradient(120deg,#f97316,#ea580c);">🗑️ 清空缓存</button>
+                    <div class="pill">当前引擎: {{ engine }}</div>
+                </div>
             </div>
             {% if error %}
             <div class="error">{{ error }}</div>
@@ -198,6 +202,13 @@
             <div class="progress">
                 <progress id="progressBar" value="0" max="1"></progress>
                 <div class="status-line" id="statusText">等待上传...</div>
+            </div>
+            <div class="hint" id="folderPath" style="margin-top:6px;">未选择文件夹</div>
+            <div style="margin-top:12px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                <div class="hint">调整当前引擎的阈值（insightface 越大越严格；face_recognition 越小越严格）：</div>
+                <input id="thresholdInput" type="range" min="0.3" max="1.2" step="0.01" value="0.6" style="width:180px;">
+                <div class="pill">当前阈值: <span id="thresholdValue">0.6</span></div>
+                <button class="btn" id="saveThreshold" style="background:linear-gradient(120deg,#6366f1,#8b5cf6);">💾 保存阈值</button>
             </div>
         </section>
 
@@ -232,12 +243,20 @@
         const backBtn = document.getElementById('backBtn');
         const modal = document.getElementById('modal');
         const modalImg = document.getElementById('modalImg');
+        const rebuildBtn = document.getElementById('rebuildBtn');
+        const thresholdInput = document.getElementById('thresholdInput');
+        const thresholdValue = document.getElementById('thresholdValue');
+        const folderPathEl = document.getElementById('folderPath');
+        const clearBtn = document.getElementById('clearBtn');
 
         let pollTimer = null;
+        let currentEngine = '{{ engine }}';
 
         input.addEventListener('change', async (e) => {
             if (!e.target.files.length) return;
             const files = Array.from(e.target.files);
+            const folder = files[0].webkitRelativePath ? files[0].webkitRelativePath.split('/').slice(0, -1).join('/') : '(自定义选择)';
+            folderPathEl.textContent = `已选择文件夹：${folder || '(根目录)'}`;
             const batchSize = 40; // 控制单次请求体积，避免解析失败
             setStatus(`准备上传 ${files.length} 个文件...`, 0, files.length);
             let uploaded = 0;
@@ -335,7 +354,7 @@
                 card.innerHTML = `
                     <img class="avatar" src="/api/face-cover/${g.group_id}?w=256" alt="cover">
                     <div class="card-title">${label}</div>
-                    <div class="card-sub">${g.count} 张</div>
+                    <div class="card-sub">${g.photo_count || g.count || 0} 张</div>
                 `;
                 card.onclick = () => loadGroupDetail(g.group_id, label);
                 groupGrid.appendChild(card);
@@ -367,14 +386,95 @@
         function showModal(src) {
             modalImg.src = src;
             modal.classList.remove('hidden');
+            modal.style.display = 'flex';
         }
         modal.onclick = () => {
             modal.classList.add('hidden');
+            modal.style.display = 'none';
             modalImg.src = '';
+        };
+
+        rebuildBtn.onclick = async () => {
+            setStatus('重新分析中...', 0, 1);
+            rebuildBtn.disabled = true;
+            try {
+                const res = await fetch('/api/rebuild', { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || data.message || '重新分析失败');
+                setStatus(data.message || '已开始重新分析', 0, 1);
+                startPolling();
+            } catch (err) {
+                setStatus('错误: ' + err.message, 0, 1, true);
+            } finally {
+                rebuildBtn.disabled = false;
+            }
+        };
+
+        thresholdInput.addEventListener('input', () => {
+            thresholdValue.textContent = thresholdInput.value;
+        });
+
+        async function loadSettings() {
+            try {
+                const res = await fetch('/api/settings');
+                const data = await res.json();
+                if (res.ok) {
+                    const key = currentEngine === 'face_recognition' ? 'facerec_threshold' : 'insightface_threshold';
+                    const v = data[key];
+                    thresholdInput.value = v;
+                    thresholdValue.textContent = v;
+                }
+            } catch (e) {
+                console.warn(e);
+            }
+        }
+
+        async function saveThreshold() {
+            const val = parseFloat(thresholdInput.value);
+            if (Number.isNaN(val)) throw new Error('阈值格式不正确');
+            const payload = new URLSearchParams({ engine: currentEngine, value: String(val) });
+            const res = await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: payload
+            });
+            let data = null;
+            try { data = await res.json(); } catch (_) {}
+            if (!res.ok) {
+                let msg = data?.detail || data?.message;
+                if (Array.isArray(msg)) {
+                    msg = msg.map(d => d?.msg || JSON.stringify(d)).join('; ');
+                }
+                throw new Error(msg || '设置失败');
+            }
+            setStatus('阈值已更新，请重新分析', 0, 1);
+        }
+
+        document.getElementById('saveThreshold').onclick = async () => {
+            try {
+                await saveThreshold();
+            } catch (err) {
+                setStatus('错误: ' + err.message, 0, 1, true);
+            }
+        };
+
+        clearBtn.onclick = async () => {
+            if (!confirm('确定清空缓存（数据库和已复制的照片）吗？')) return;
+            setStatus('正在清理缓存...', 0, 1);
+            try {
+                const res = await fetch('/api/clear-cache', { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || data.message || '清理失败');
+                setStatus(data.message || '缓存已清空，请重新上传', 0, 1);
+                await loadGroups();
+            } catch (err) {
+                setStatus('错误: ' + err.message, 0, 1, true);
+            }
         };
 
         // initial load
         loadGroups();
+        loadSettings();
         // ensure modal stays hidden on first paint
         modal.classList.add('hidden');
         modal.style.display = 'none';

@@ -110,9 +110,10 @@ class Database:
             )
             return cur.fetchall()
 
-    def list_groups_with_cover(self) -> List[Tuple[str, int, str, str]]:
+    def list_groups_with_cover(self) -> List[Tuple[str, int, int, str, str]]:
         """
-        Returns list of (group_id, count, photo_id, bbox_json) using the earliest face in each group as cover.
+        Returns list of (group_id, photo_count, face_count, photo_id, bbox_json)
+        using the earliest face in each group as cover.
         """
         with self._lock, self._conn:
             cur = self._conn.execute(
@@ -123,16 +124,18 @@ class Database:
                     WHERE group_id IS NOT NULL
                     GROUP BY group_id
                 )
-                SELECT f.group_id, cnt.cnt, f.photo_id, f.bbox
+                SELECT f.group_id, counts.photo_count, counts.face_count, f.photo_id, f.bbox
                 FROM cover c
                 JOIN faces f ON f.id = c.face_id
                 JOIN (
-                    SELECT group_id, COUNT(*) AS cnt
+                    SELECT group_id,
+                           COUNT(DISTINCT photo_id) AS photo_count,
+                           COUNT(*) AS face_count
                     FROM faces
                     WHERE group_id IS NOT NULL
                     GROUP BY group_id
-                ) cnt ON cnt.group_id = f.group_id
-                ORDER BY cnt.cnt DESC
+                ) counts ON counts.group_id = f.group_id
+                ORDER BY counts.photo_count DESC
                 """
             )
             return cur.fetchall()
