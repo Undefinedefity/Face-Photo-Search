@@ -8,7 +8,14 @@
 
 ## 快速开始
 
-1) 安装依赖（建议使用 Python 3.9+）
+1) 准备环境（建议 Python 3.9+，示例使用 conda）
+
+```bash
+conda create -n face-photo-search python=3.10 -y
+conda activate face-photo-search
+```
+
+安装依赖：
 
 ```bash
 pip install -r requirements.txt
@@ -22,6 +29,7 @@ pip install face_recognition
 
 - macOS / Linux：
   ```bash
+  chmod +x run.sh  # 如首次运行需要权限
   ./run.sh
   ```
 - Windows：
