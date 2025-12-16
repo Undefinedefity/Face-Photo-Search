@@ -65,6 +65,22 @@ Browser opens at <http://localhost:8000>.
   - `INSIGHTFACE_THRESHOLD` (default 0.6)
   - `FACEREC_THRESHOLD` (default 0.6)
 
+## How It Works
+- Face engine
+  - Tries InsightFace first (ONNXRuntime); normalizes embeddings and uses cosine similarity for grouping.
+  - If InsightFace is unavailable, falls back to face_recognition; uses dlib encodings with euclidean distance.
+  - Clustering: simple centroid-based grouping with a configurable threshold (per engine) to merge/split people.
+- Backend flow (FastAPI)
+  - `POST /api/upload-folder`: browser sends all files; server hashes content, copies into `data/photos/`, enqueues new ones.
+  - Background worker detects faces, stores embeddings + bboxes + model type in SQLite (`data/app.db`), and reclusters all faces.
+  - `GET /api/groups`: returns groups with a face-crop cover (`/api/face-cover/{id}`).
+  - `GET /api/photo/{photo_id}?w=256`: serves originals or thumbnails; `GET /api/face-cover/{group}` crops the face for covers.
+  - Settings (`/api/settings`) persist thresholds to `data/config.json`; `POST /api/clear-cache` resets DB and copied photos.
+- Frontend flow
+  - Folder picker (`webkitdirectory`) → batched uploads (~40 files) → status polling (`/api/status`).
+  - Shows groups, cover face crops, per-person photo grids; thumbnails click to full-size preview.
+  - UI controls: threshold slider + save → “Re-analyze” to re-cluster; “Clear cache” to wipe DB/photos.
+
 ## API (minimal)
 - `POST /api/upload-folder` : multipart multi-file upload (folder picker)
 - `GET /api/status` : task state/progress
@@ -134,6 +150,22 @@ chmod +x run.sh && ./run.sh   # macOS/Linux
 ### 聚类与阈值
 - InsightFace：阈值越大越严格；face_recognition：阈值越小越严格。
 - 调节：UI 滑条（保存后写入 `data/config.json`），再点“重新分析”；或启动前用环境变量 `INSIGHTFACE_THRESHOLD` / `FACEREC_THRESHOLD`。
+
+### 工作原理
+- 人脸引擎
+  - 优先用 InsightFace（ONNXRuntime）；对 embedding 做归一化，用余弦相似度聚类。
+  - InsightFace 不可用时退回 face_recognition（dlib encodings，欧氏距离）。
+  - 聚类：简单质心合并，按引擎阈值控制“合并/拆分”。
+- 后端流程（FastAPI）
+  - `POST /api/upload-folder`：浏览器批量上传；服务器按内容哈希复制到 `data/photos/`，只处理新文件。
+  - 后台线程检测人脸，存入 SQLite（`data/app.db`）包括 embedding/bbox/model，随后整体重算分组。
+  - `GET /api/groups` 返回分组并带封面裁剪（`/api/face-cover/{id}`）。
+  - `GET /api/photo/{photo_id}?w=256` 提供原图/缩略图；封面接口从 bbox 生成人脸裁剪。
+  - `GET/POST /api/settings` 保存阈值到 `data/config.json`；`POST /api/clear-cache` 清理 DB 与复制照片并重建状态。
+- 前端流程
+  - 文件夹选择（webkitdirectory）→ 分批上传（~40 张/批）→ 轮询 `/api/status`。
+  - 展示分组、封面头像、人物详情网格；缩略图点击放大原图。
+  - 控件：阈值滑条+保存→“重新分析”重新聚类；“清空缓存”清理数据。
 
 ### API
 - `POST /api/upload-folder`、`GET /api/status`、`GET /api/groups`、`GET /api/groups/{group_id}`、
