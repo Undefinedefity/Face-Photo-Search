@@ -238,24 +238,30 @@
         input.addEventListener('change', async (e) => {
             if (!e.target.files.length) return;
             const files = Array.from(e.target.files);
-            const formData = new FormData();
-            files.forEach(f => formData.append('files', f, f.webkitRelativePath || f.name));
-            setStatus('正在上传并开始分析...', 0, 1);
+            const batchSize = 40; // 控制单次请求体积，避免解析失败
+            setStatus(`准备上传 ${files.length} 个文件...`, 0, files.length);
+            let uploaded = 0;
             try {
-                const res = await fetch('/api/upload-folder', {
-                    method: 'POST',
-                    body: formData
-                });
-                let data = null;
-                try {
-                    data = await res.json();
-                } catch (_) {
-                    // fall back to text if not JSON
-                    const t = await res.text();
-                    throw new Error(t || '解析响应失败');
+                for (let i = 0; i < files.length; i += batchSize) {
+                    const slice = files.slice(i, i + batchSize);
+                    const formData = new FormData();
+                    slice.forEach(f => formData.append('files', f, f.webkitRelativePath || f.name));
+                    const res = await fetch('/api/upload-folder', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    let data = null;
+                    try {
+                        data = await res.json();
+                    } catch (_) {
+                        const t = await res.text();
+                        throw new Error(t || '解析响应失败');
+                    }
+                    if (!res.ok) throw new Error(data.detail || data.message || '上传失败');
+                    uploaded += slice.length;
+                    setStatus(`已提交 ${uploaded}/${files.length}，正在排队处理...`, uploaded, files.length);
                 }
-                if (!res.ok) throw new Error(data.detail || data.message || '上传失败');
-                setStatus('已提交，正在分析...', 0, 1);
+                setStatus('已提交，正在分析...', files.length, files.length);
                 startPolling();
             } catch (err) {
                 setStatus('错误: ' + err.message, 0, 1, true);

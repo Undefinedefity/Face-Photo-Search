@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import List, Optional
 
 import uvicorn
+import traceback
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -38,6 +39,18 @@ face_engine = FaceEngine()
 processor = PhotoProcessor(db=db, engine=face_engine)
 
 
+@app.middleware("http")
+async def log_errors(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as exc:  # noqa: BLE001
+        traceback.print_exc()
+        return HTMLResponse(
+            content=f"Internal server error: {exc}",
+            status_code=500,
+        )
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
     if not face_engine.available:
@@ -56,8 +69,6 @@ async def index(request: Request) -> HTMLResponse:
 
 @app.post("/api/upload-folder")
 async def upload_folder(files: List[UploadFile] = File(...)) -> dict:
-    if processor.status.state == "running":
-        raise HTTPException(status_code=409, detail="Processing already running")
     if not files:
         raise HTTPException(status_code=400, detail="No files received")
     if not face_engine.available:
@@ -91,11 +102,9 @@ async def upload_folder(files: List[UploadFile] = File(...)) -> dict:
         jobs.append(PhotoJob(photo_id=photo_id, file_path=dest_path, orig_name=file.filename or dest_path.name))
         saved += 1
 
-    if not jobs:
-        return {"accepted": 0, "detail": "No new images to process"}
-
-    processor.enqueue(jobs)
-    return {"accepted": saved, "message": "Processing started"}
+    if jobs:
+        processor.enqueue(jobs)
+    return {"accepted": saved, "message": "Processing queued", "queued_jobs": len(jobs)}
 
 
 @app.get("/api/status")
@@ -188,4 +197,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
