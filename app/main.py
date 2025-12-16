@@ -125,11 +125,11 @@ async def status() -> dict:
 
 @app.get("/api/groups")
 async def groups() -> dict:
-    items = db.list_groups()
+    items = db.list_groups_with_cover()
     return {
         "groups": [
-            {"group_id": gid, "count": count, "cover_photo_id": cover}
-            for gid, count, cover in items
+            {"group_id": gid, "count": count, "cover_photo_id": pid, "cover_bbox": bbox}
+            for gid, count, pid, bbox in items
         ]
     }
 
@@ -165,6 +165,42 @@ async def photo(photo_id: str, w: Optional[int] = None):
     if not w:
         return FileResponse(photo_path)
     data = await asyncio.to_thread(_read_image, photo_path, int(w))
+    return StreamingResponse(io.BytesIO(data), media_type="image/jpeg")
+
+
+def _read_face_crop(photo_path: Path, bbox_json: str, width: Optional[int]) -> bytes:
+    bbox = json.loads(bbox_json)
+    with Image.open(photo_path) as im:
+        x1, y1, x2, y2 = bbox
+        # expand a bit to include more context
+        dx = int((x2 - x1) * 0.2)
+        dy = int((y2 - y1) * 0.2)
+        left = max(0, x1 - dx)
+        top = max(0, y1 - dy)
+        right = min(im.width, x2 + dx)
+        bottom = min(im.height, y2 + dy)
+        face = im.crop((left, top, right, bottom))
+        if width and width > 0:
+            ratio = width / float(face.width)
+            height = int(face.height * ratio)
+            face = face.resize((width, height))
+        buf = io.BytesIO()
+        face.save(buf, format="JPEG")
+        return buf.getvalue()
+
+
+@app.get("/api/face-cover/{group_id}")
+async def face_cover(group_id: str, w: Optional[int] = None):
+    # pick first face in group as cover
+    items = db.list_groups_with_cover()
+    record = next((r for r in items if r[0] == group_id), None)
+    if not record:
+        raise HTTPException(status_code=404, detail="Group not found")
+    _, _, photo_id, bbox = record
+    path_str = db.get_photo_path(photo_id)
+    if not path_str:
+        raise HTTPException(status_code=404, detail="Photo not found")
+    data = await asyncio.to_thread(_read_face_crop, Path(path_str), bbox, int(w) if w else None)
     return StreamingResponse(io.BytesIO(data), media_type="image/jpeg")
 
 

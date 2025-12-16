@@ -328,20 +328,21 @@
             }
             emptyHint.classList.add('hidden');
             groupGrid.classList.remove('hidden');
-            groups.forEach(g => {
+            groups.forEach((g, idx) => {
+                const label = `人物 ${idx + 1}`;
                 const card = document.createElement('div');
                 card.className = 'person-card';
                 card.innerHTML = `
-                    <img class="avatar" src="/api/photo/${g.cover_photo_id}?w=256" alt="cover">
-                    <div class="card-title">人物 ${g.group_id.slice(0, 6)}</div>
+                    <img class="avatar" src="/api/face-cover/${g.group_id}?w=256" alt="cover">
+                    <div class="card-title">${label}</div>
                     <div class="card-sub">${g.count} 张</div>
                 `;
-                card.onclick = () => loadGroupDetail(g.group_id);
+                card.onclick = () => loadGroupDetail(g.group_id, label);
                 groupGrid.appendChild(card);
             });
         }
 
-        async function loadGroupDetail(groupId) {
+        async function loadGroupDetail(groupId, label) {
             const res = await fetch(`/api/groups/${groupId}`);
             if (!res.ok) return;
             const data = await res.json();
@@ -354,7 +355,7 @@
                 img.onclick = () => showModal(`/api/photo/${pid}`);
                 detailGrid.appendChild(img);
             });
-            detailTitle.textContent = `人物 ${groupId.slice(0,6)} · ${photos.length} 张`;
+            detailTitle.textContent = `${label || '人物'} · ${photos.length} 张`;
             detailSection.classList.remove('hidden');
             detailSection.scrollIntoView({behavior: 'smooth'});
         }
