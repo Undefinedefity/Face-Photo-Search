@@ -280,7 +280,7 @@
         <div>最后更新时间：2025 年 12 月 16 日</div>
     </footer>
 
-    <div id="floatingStatus" style="position:fixed;right:16px;bottom:16px;z-index:30;min-width:260px;max-width:340px;background:rgba(15,23,42,0.92);border:1px solid var(--border);border-radius:12px;padding:12px;box-shadow:0 10px 30px rgba(0,0,0,0.4);backdrop-filter:blur(6px);">
+    <div id="floatingStatus" style="position:fixed;right:16px;bottom:16px;z-index:30;min-width:260px;max-width:340px;background:rgba(15,23,42,0.92);border:1px solid var(--border);border-radius:12px;padding:12px;box-shadow:0 10px 30px rgba(0,0,0,0.4);backdrop-filter:blur(6px);display:none;">
         <div style="color:var(--muted);font-size:13px;margin-bottom:6px;" id="floatingLabel">Status</div>
         <progress id="floatingProgress" value="0" max="1" style="width:100%;height:10px;border-radius:8px;overflow:hidden;background:var(--border);"></progress>
         <div style="margin-top:6px;color:var(--text);font-size:14px;" id="floatingText">Waiting for upload...</div>
@@ -467,7 +467,7 @@
             const folder = files[0].webkitRelativePath ? files[0].webkitRelativePath.split('/').slice(0, -1).join('/') : '(自定义选择)';
             folderPathEl.textContent = `${t('folderSelected')} ${folder || ''}`.trim();
             const batchSize = 40; // 控制单次请求体积，避免解析失败
-            setStatus(t('prepUpload')(files.length), 0, files.length);
+            setStatus(t('prepUpload')(files.length), 0, files.length, false, true);
             let uploaded = 0;
             try {
                 for (let i = 0; i < files.length; i += batchSize) {
@@ -487,25 +487,31 @@
                     }
                     if (!res.ok) throw new Error(data.detail || data.message || t('uploadFailed'));
                     uploaded += slice.length;
-                    setStatus(t('submittedBatch')(uploaded, files.length), uploaded, files.length);
+                    setStatus(t('submittedBatch')(uploaded, files.length), uploaded, files.length, false, true);
                 }
-                setStatus(t('submittedAll'), files.length, files.length);
+                setStatus(t('submittedAll'), files.length, files.length, false, true);
                 startPolling();
             } catch (err) {
-                setStatus(t('errorPrefix') + err.message, 0, 1, true);
+                setStatus(t('errorPrefix') + err.message, 0, 1, true, true);
             } finally {
                 input.value = '';
             }
         });
 
-        function setStatus(text, value, max, isError=false) {
+        function setStatus(text, value, max, isError=false, showFloating=false) {
             statusText.textContent = text;
             statusText.style.color = isError ? '#fecdd3' : 'var(--muted)';
+            const m = Math.max(max, 1);
             progressBar.value = value;
-            progressBar.max = Math.max(max, 1);
+            progressBar.max = m;
             floatingText.textContent = text;
             floatingProgress.value = value;
-            floatingProgress.max = Math.max(max, 1);
+            floatingProgress.max = m;
+            if (showFloating || isError || (m > 1 && value > 0) || (text && text !== t('waiting'))) {
+                floatingStatus.style.display = 'block';
+            } else {
+                floatingStatus.style.display = 'none';
+            }
         }
 
         async function pollStatus() {
@@ -529,7 +535,8 @@
                 }
                 line += ` · ${t('facesFound')}: ${faces_found || 0}`;
                 if (photos_no_face) line += ` · ${t('noFace')}: ${photos_no_face}`;
-                setStatus(line, progressBar.value, progressBar.max);
+                const showFloating = state === 'running';
+                setStatus(line, progressBar.value, progressBar.max, state === 'error', showFloating);
 
                 if (state === 'done' || state === 'idle') {
                     await loadGroups();
@@ -618,7 +625,7 @@
         };
 
         rebuildBtn.onclick = async () => {
-            setStatus(t('rebuilding'), 0, 1);
+            setStatus(t('rebuilding'), 0, 1, false, true);
             rebuildBtn.disabled = true;
             try {
                 const res = await fetch('/api/rebuild', { method: 'POST' });
@@ -627,7 +634,7 @@
                 setStatus(data.message || t('rebuildStarted'), 0, 1);
                 startPolling();
             } catch (err) {
-                setStatus(t('errorPrefix') + err.message, 0, 1, true);
+                setStatus(t('errorPrefix') + err.message, 0, 1, true, true);
             } finally {
                 rebuildBtn.disabled = false;
             }
@@ -691,7 +698,7 @@
                 setStatus(data.message || t('cleared'), 0, 1);
                 await loadGroups();
             } catch (err) {
-                setStatus(t('errorPrefix') + err.message, 0, 1, true);
+                setStatus(t('errorPrefix') + err.message, 0, 1, true, true);
             }
         };
 
@@ -709,7 +716,7 @@
 
         downloadAllBtn.onclick = async () => {
             if (!currentGroupId) return;
-            setStatus(t('downloading'), 0, 1);
+            setStatus(t('downloading'), 0, 1, false, true);
             try {
                 const res = await fetch(`/api/groups/${currentGroupId}/zip`);
                 if (!res.ok) {
