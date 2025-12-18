@@ -280,6 +280,12 @@
         <div>最后更新时间：2025 年 12 月 16 日</div>
     </footer>
 
+    <div id="floatingStatus" style="position:fixed;right:16px;bottom:16px;z-index:30;min-width:260px;max-width:340px;background:rgba(15,23,42,0.92);border:1px solid var(--border);border-radius:12px;padding:12px;box-shadow:0 10px 30px rgba(0,0,0,0.4);backdrop-filter:blur(6px);">
+        <div style="color:var(--muted);font-size:13px;margin-bottom:6px;" id="floatingLabel">Status</div>
+        <progress id="floatingProgress" value="0" max="1" style="width:100%;height:10px;border-radius:8px;overflow:hidden;background:var(--border);"></progress>
+        <div style="margin-top:6px;color:var(--text);font-size:14px;" id="floatingText">Waiting for upload...</div>
+    </div>
+
     <script>
         const input = document.getElementById('folderInput');
         const progressBar = document.getElementById('progressBar');
@@ -300,6 +306,10 @@
         const downloadPhotoBtn = document.getElementById('downloadPhotoBtn');
         const downloadAllBtn = document.getElementById('downloadAllBtn');
         const modalContent = document.getElementById('modalContent');
+        const floatingStatus = document.getElementById('floatingStatus');
+        const floatingText = document.getElementById('floatingText');
+        const floatingProgress = document.getElementById('floatingProgress');
+        const floatingLabel = document.getElementById('floatingLabel');
         const chooseBtn = document.getElementById('chooseBtn');
         const browserHint = document.getElementById('browserHint');
         const groupsTitle = document.getElementById('groupsTitle');
@@ -432,6 +442,8 @@
             clearBtn.textContent = `🗑️ ${t('clear')}`;
             enginePill.textContent = `${t('engine')}: ${currentEngine || ''}`;
             statusText.textContent = t('waiting');
+            floatingLabel.textContent = t('statusLabel');
+            floatingText.textContent = t('waiting');
             folderPathEl.textContent = t('folderNone');
             thresholdHint.textContent = t('thresholdHint');
             thresholdPill.firstChild.textContent = `${t('thresholdLabel')}: `;
@@ -491,6 +503,9 @@
             statusText.style.color = isError ? '#fecdd3' : 'var(--muted)';
             progressBar.value = value;
             progressBar.max = Math.max(max, 1);
+            floatingText.textContent = text;
+            floatingProgress.value = value;
+            floatingProgress.max = Math.max(max, 1);
         }
 
         async function pollStatus() {
