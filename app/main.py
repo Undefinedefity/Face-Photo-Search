@@ -104,7 +104,8 @@ async def upload_folder(files: List[UploadFile] = File(...)) -> dict:
 
         if db.photo_exists(photo_id):
             continue
-        jobs.append(PhotoJob(photo_id=photo_id, file_path=dest_path, orig_name=file.filename or dest_path.name))
+        orig_name = Path(file.filename or dest_path.name).name
+        jobs.append(PhotoJob(photo_id=photo_id, file_path=dest_path, orig_name=orig_name))
         saved += 1
 
     if jobs:
@@ -175,7 +176,8 @@ async def photo(photo_id: str, w: Optional[int] = None, download: bool = False):
         raise HTTPException(status_code=404, detail="File missing on disk")
 
     if download:
-        return FileResponse(photo_path, filename=orig_name or photo_path.name)
+        download_name = Path(orig_name).name if orig_name else photo_path.name
+        return FileResponse(photo_path, filename=download_name)
 
     if not w:
         return FileResponse(photo_path)
@@ -233,7 +235,7 @@ async def group_zip(group_id: str):
         raise HTTPException(status_code=404, detail="Group not found")
 
     buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_STORED) as zf:
         for pid in photos:
             meta = db.get_photo_meta(pid)
             if not meta:
@@ -242,7 +244,7 @@ async def group_zip(group_id: str):
             photo_path = Path(path_str)
             if not photo_path.exists():
                 continue
-            arcname = orig_name or photo_path.name
+            arcname = Path(orig_name).name if orig_name else photo_path.name
             try:
                 zf.write(photo_path, arcname=arcname)
             except ValueError:
