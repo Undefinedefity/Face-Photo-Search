@@ -187,11 +187,25 @@
             padding: 20px;
             z-index: 20;
         }
+        .modal-content {
+            position: relative;
+        }
         .modal img {
             max-width: 90vw;
             max-height: 90vh;
             border-radius: 12px;
             box-shadow: 0 10px 40px rgba(0,0,0,0.45);
+        }
+        .modal-btn {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 10px;
+            background: linear-gradient(120deg, var(--accent), #6366f1);
+            color: #fff;
+            cursor: pointer;
         }
     </style>
 </head>
@@ -245,14 +259,20 @@
         <section id="detailSection" class="card hidden">
             <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
                 <h2 id="detailTitle">人物详情</h2>
-                <button class="btn" id="backBtn">← 返回合集</button>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+                    <button class="btn" id="downloadAllBtn" style="background:linear-gradient(120deg,#0ea5e9,#2563eb);">⬇️ 下载全部</button>
+                    <button class="btn" id="backBtn">← 返回合集</button>
+                </div>
             </div>
             <div id="detailGrid" class="thumb-grid"></div>
         </section>
     </main>
 
     <div id="modal" class="modal hidden" style="display:none;" aria-hidden="true">
-        <img id="modalImg" src="" alt="预览">
+        <div class="modal-content" id="modalContent">
+            <button class="modal-btn" id="downloadPhotoBtn">⬇️ 下载</button>
+            <img id="modalImg" src="" alt="预览">
+        </div>
     </div>
 
     <footer style="max-width:1100px;margin:0 auto 24px;padding:0 20px;color:var(--muted);font-size:13px;text-align:center;">
@@ -277,6 +297,9 @@
         const thresholdValue = document.getElementById('thresholdValue');
         const folderPathEl = document.getElementById('folderPath');
         const clearBtn = document.getElementById('clearBtn');
+        const downloadPhotoBtn = document.getElementById('downloadPhotoBtn');
+        const downloadAllBtn = document.getElementById('downloadAllBtn');
+        const modalContent = document.getElementById('modalContent');
         const chooseBtn = document.getElementById('chooseBtn');
         const browserHint = document.getElementById('browserHint');
         const groupsTitle = document.getElementById('groupsTitle');
@@ -293,6 +316,8 @@
         const initialEngine = '{{ engine }}';
         let currentEngine = initialEngine;
         let currentLang = 'en';
+        let currentGroupId = null;
+        let currentPhotoId = null;
 
         const i18n = {
             en: {
@@ -319,6 +344,10 @@
                 noFace: 'No-face photos',
                 personsPrefix: 'Person',
                 photosUnit: 'photos',
+                download: 'Download',
+                downloadAll: 'Download all',
+                downloading: 'Downloading...',
+                downloadFailed: 'Download failed',
                 parseFailed: 'Failed to parse response',
                 uploadFailed: 'Upload failed',
                 prepUpload: (n) => `Preparing to upload ${n} files...`,
@@ -363,6 +392,10 @@
                 noFace: '无人脸',
                 personsPrefix: '人物',
                 photosUnit: '张',
+                download: '下载',
+                downloadAll: '下载全部',
+                downloading: '正在下载...',
+                downloadFailed: '下载失败',
                 parseFailed: '解析响应失败',
                 uploadFailed: '上传失败',
                 prepUpload: (n) => `准备上传 ${n} 个文件...`,
@@ -407,6 +440,8 @@
             emptyHint.textContent = t('emptyHint');
             detailTitle.textContent = t('detailTitle');
             backBtn.textContent = t('back');
+            downloadPhotoBtn.textContent = `⬇️ ${t('download')}`;
+            downloadAllBtn.textContent = `⬇️ ${t('downloadAll')}`;
             langEnBtn.classList.toggle('active', currentLang === 'en');
             langZhBtn.classList.toggle('active', currentLang === 'zh');
         }
@@ -535,11 +570,15 @@
             const data = await res.json();
             const photos = data.photos || [];
             detailGrid.innerHTML = '';
+            currentGroupId = groupId;
             photos.forEach(pid => {
                 const img = document.createElement('img');
                 img.className = 'thumb';
                 img.src = `/api/photo/${pid}?w=256`;
-                img.onclick = () => showModal(`/api/photo/${pid}`);
+                img.onclick = () => {
+                    currentPhotoId = pid;
+                    showModal(`/api/photo/${pid}`);
+                };
                 detailGrid.appendChild(img);
             });
             detailTitle.textContent = `${label || t('personsPrefix')} · ${photos.length} ${t('photosUnit')}`;
@@ -553,6 +592,7 @@
 
         function showModal(src) {
             modalImg.src = src;
+            // store full-size url for download
             modal.classList.remove('hidden');
             modal.style.display = 'flex';
         }
@@ -639,6 +679,44 @@
                 setStatus(t('errorPrefix') + err.message, 0, 1, true);
             }
         };
+
+        downloadPhotoBtn.onclick = (e) => {
+            e.stopPropagation();
+            if (!currentPhotoId) return;
+            const url = `/api/photo/${currentPhotoId}?download=1`;
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = '';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        };
+
+        downloadAllBtn.onclick = async () => {
+            if (!currentGroupId) return;
+            setStatus(t('downloading'), 0, 1);
+            try {
+                const res = await fetch(`/api/groups/${currentGroupId}/zip`);
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data.detail || data.message || t('downloadFailed'));
+                }
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `group_${currentGroupId.slice(0,6)}.zip`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                setStatus(t('waiting'), 0, 1);
+            } catch (err) {
+                setStatus(t('errorPrefix') + err.message, 0, 1, true);
+            }
+        };
+
+        modalContent.addEventListener('click', (e) => e.stopPropagation());
 
         // initial load
         applyLanguage();

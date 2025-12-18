@@ -159,6 +159,20 @@ class Database:
             row = cur.fetchone()
             return row[0] if row else None
 
+    def get_photo_meta(self, photo_id: str) -> Optional[Tuple[str, Optional[str]]]:
+        """
+        Returns (file_path, orig_name) or None.
+        """
+        with self._lock, self._conn:
+            cur = self._conn.execute(
+                "SELECT file_path, orig_name FROM photos WHERE photo_id = ?",
+                (photo_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            return row[0], row[1]
+
     def list_photos(self) -> List[Tuple[str, str, str]]:
         """
         Returns list of (photo_id, file_path, orig_name)

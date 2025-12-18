@@ -8,6 +8,7 @@ import shutil
 import sys
 import threading
 import webbrowser
+import zipfile
 from pathlib import Path
 from typing import List, Optional
 
@@ -164,13 +165,17 @@ def _read_image(photo_path: Path, width: Optional[int]) -> bytes:
 
 
 @app.get("/api/photo/{photo_id}")
-async def photo(photo_id: str, w: Optional[int] = None):
-    path_str = db.get_photo_path(photo_id)
-    if not path_str:
+async def photo(photo_id: str, w: Optional[int] = None, download: bool = False):
+    meta = db.get_photo_meta(photo_id)
+    if not meta:
         raise HTTPException(status_code=404, detail="Photo not found")
+    path_str, orig_name = meta
     photo_path = Path(path_str)
     if not photo_path.exists():
         raise HTTPException(status_code=404, detail="File missing on disk")
+
+    if download:
+        return FileResponse(photo_path, filename=orig_name or photo_path.name)
 
     if not w:
         return FileResponse(photo_path)
@@ -219,6 +224,37 @@ async def face_cover(group_id: str, w: Optional[int] = None):
         raise HTTPException(status_code=404, detail="Photo not found")
     data = await asyncio.to_thread(_read_face_crop, Path(path_str), bbox, int(w) if w else None)
     return StreamingResponse(io.BytesIO(data), media_type="image/jpeg")
+
+
+@app.get("/api/groups/{group_id}/zip")
+async def group_zip(group_id: str):
+    photos = db.list_group_photos(group_id)
+    if not photos:
+        raise HTTPException(status_code=404, detail="Group not found")
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for pid in photos:
+            meta = db.get_photo_meta(pid)
+            if not meta:
+                continue
+            path_str, orig_name = meta
+            photo_path = Path(path_str)
+            if not photo_path.exists():
+                continue
+            arcname = orig_name or photo_path.name
+            try:
+                zf.write(photo_path, arcname=arcname)
+            except ValueError:
+                # Fallback if duplicate names; still keep readable
+                zf.write(photo_path, arcname=f"{photo_path.stem}_{pid[:6]}{photo_path.suffix}")
+    buffer.seek(0)
+    filename = f"group_{group_id[:6]}.zip"
+    return StreamingResponse(
+        buffer,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/api/settings")
